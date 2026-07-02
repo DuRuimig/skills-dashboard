@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a bug, broken layout, or scanning problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem clearly.
+      placeholder: The dashboard did not detect my Claude Code skills...
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Environment
+      description: OS, agent tool, install path, and browser.
+      placeholder: macOS 15, Codex, Chrome, skills in ~/.codex/skills
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us how to reproduce it.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Click ...
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or logs
+      description: Add screenshots, terminal output, or relevant logs if possible.
+    validations:
+      required: false
