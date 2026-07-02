@@ -162,6 +162,13 @@ SKILL_PROFILES = {
         "requirements": "安装后通常需要重启 Codex 才会自动识别新 skill。",
         "examples": ["安装 ui-ux-pro-max skill", "列出可安装的 curated skills"],
     },
+    "skills-dashboard": {
+        "category": "知识管理",
+        "summary": "本地 Skill 管理中枢，用来查看、分类、备注和整理 Codex、Claude Code、Hermes 等环境里的 Skills。",
+        "whenToUse": "想打开 Skill 中枢、检查已安装 Skills、整理分类颜色或查看某个 Skill 如何调用时使用。",
+        "requirements": "启动后只在本机 127.0.0.1 运行；个人备注和颜色保存在本地应用数据目录。",
+        "examples": ["用 skills-dashboard 打开 Skill 中枢", "Use skills-dashboard to open my Skill center"],
+    },
     "ui-ux-pro-max": {
         "category": "设计体验",
         "summary": "UI/UX 设计智能库，覆盖颜色、字体、布局、可访问性、动效和产品类型建议。",
@@ -662,6 +669,60 @@ def enrich_item(item):
     return item
 
 
+def skill_identity(name):
+    return (name or "").strip().lower()
+
+
+def skill_source_rank(path):
+    text = str(path)
+    if "/.codex/skills/" in text and "/.codex/skills/.system/" not in text:
+        return 0
+    if "/.agents/skills/" in text:
+        return 1
+    if "/.cc-switch/skills/" in text:
+        return 2
+    if "/.claude/skills/" in text or "/.config/claude/skills/" in text:
+        return 3
+    if "/.hermes/skills/" in text or "/.config/hermes/skills/" in text:
+        return 4
+    if "/.codex/plugins/cache/" in text:
+        return 5
+    if "/.codex/skills/.system/" in text:
+        return 6
+    return 9
+
+
+def prefer_skill_item(current, candidate):
+    current_key = (skill_source_rank(current.get("path", "")), current.get("name", "").lower(), current.get("path", ""))
+    candidate_key = (skill_source_rank(candidate.get("path", "")), candidate.get("name", "").lower(), candidate.get("path", ""))
+    return candidate if candidate_key < current_key else current
+
+
+def dedupe_skills(items):
+    deduped = {}
+    locations = {}
+    for item in items:
+        key = skill_identity(item.get("name"))
+        if not key:
+            key = item.get("path", "")
+        locations.setdefault(key, []).append({
+            "source": item.get("source", ""),
+            "path": item.get("path", ""),
+            "folder": item.get("folder", ""),
+        })
+        if key not in deduped:
+            deduped[key] = item
+        else:
+            deduped[key] = prefer_skill_item(deduped[key], item)
+
+    result = []
+    for key, item in deduped.items():
+        item["installLocations"] = sorted(locations.get(key, []), key=lambda x: (skill_source_rank(x.get("path", "")), x.get("path", "")))
+        item["installCount"] = len(item["installLocations"])
+        result.append(item)
+    return result
+
+
 def scan_skills():
     items = []
     seen = set()
@@ -695,7 +756,7 @@ def scan_skills():
                     "callHint": f"直接描述需求，或说：用 {name} ...",
                 })
             )
-    return items
+    return dedupe_skills(items)
 
 
 def command_path(name):
