@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skills 中枢</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260702-navmotion4" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="nav-panel" aria-label="Skill 分类">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">S</div>
+          <div class="brand-copy">
+            <h1>Skills 中枢</h1>
+            <p id="summary">正在扫描</p>
+          </div>
+          <button id="toggleNav" class="sidebar-toggle" title="收起左侧栏" aria-label="收起左侧栏" aria-expanded="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+        </div>
+
+        <label class="search-box">
+          <span>查找 Skill</span>
+          <input id="search" type="search" placeholder="输入平台、用途、文件类型或命令" autocomplete="off" />
+        </label>
+
+        <nav id="categories" class="category-list" aria-label="分类"></nav>
+
+        <div class="storage-note">
+          <span>本地备注文件</span>
+          <code id="catalogPath"></code>
+        </div>
+      </aside>
+
+      <section class="main-panel">
+        <header class="topbar">
+          <button id="mobileMenu" class="mobile-menu-button" title="打开分类菜单" aria-label="打开分类菜单" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <h2>Skills</h2>
+            <p id="viewLabel">全部条目</p>
+          </div>
+          <div class="top-actions">
+            <div class="view-switch" role="group" aria-label="显示方式">
+              <button class="view-button active" data-view="grid" title="卡片模式" aria-label="卡片模式">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+              </button>
+              <button class="view-button" data-view="list" title="列表模式" aria-label="列表模式">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+              </button>
+            </div>
+            <div class="segmented" role="tablist" aria-label="筛选">
+              <button class="segment active" data-filter="all">全部</button>
+              <button class="segment" data-filter="favorite">常用</button>
+              <button class="segment" data-filter="skill">Skills</button>
+              <button class="segment" data-filter="cli">命令</button>
+              <button class="segment" data-filter="hidden">隐藏</button>
+            </div>
+            <button id="refresh" class="icon-button" title="重新扫描" aria-label="重新扫描">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8m0 0V3m0 5h5M4 13a8 8 0 0 0 14.6 4.5L20 16m0 0v5m0-5h-5"/></svg>
+            </button>
+            <button id="openSettings" class="icon-button" title="设置" aria-label="打开设置">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2.1 2.1 0 0 1-2.97 2.97l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21.4a2.1 2.1 0 0 1-4.2 0v-.09a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.06.06a2.1 2.1 0 0 1-2.97-2.97l.06-.06a1.8 1.8 0 0 0 .36-1.98 1.8 1.8 0 0 0-1.65-1.09H2.6a2.1 2.1 0 0 1 0-4.2h.09a1.8 1.8 0 0 0 1.65-1.09 1.8 1.8 0 0 0-.36-1.98l-.06-.06a2.1 2.1 0 0 1 2.97-2.97l.06.06a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.09-1.65V2.6a2.1 2.1 0 0 1 4.2 0v.09a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2.1 2.1 0 0 1 2.97 2.97l-.06.06a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.09h.09a2.1 2.1 0 0 1 0 4.2h-.09A1.8 1.8 0 0 0 19.4 15Z"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-grid">
+          <section class="list-panel" aria-label="Skill 列表">
+            <div class="list-head">
+              <span>Skill</span>
+              <span>分类</span>
+            </div>
+            <div id="items" class="item-list"></div>
+          </section>
+
+          <section class="detail-panel" id="detailPanel" aria-label="Skill 详情">
+            <button id="toggleDetail" class="detail-toggle" title="收起详情栏" aria-label="收起详情栏" aria-expanded="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div id="detail" class="detail-content">
+              <div class="empty-state">
+                <h2>选择一个 Skill</h2>
+                <p>右侧会显示用途、适用场景、依赖条件和调用方式。</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+      <div id="mobileNavBackdrop" class="mobile-nav-backdrop" hidden></div>
+    </main>
+    <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+    <aside id="settingsPanel" class="settings-panel" aria-label="设置" aria-hidden="true">
+      <header class="settings-head">
+        <div>
+          <h2>设置</h2>
+          <p>调整浏览 Skill 时的界面行为。</p>
+        </div>
+        <button id="closeSettings" class="settings-close" title="关闭设置" aria-label="关闭设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="settings-content">
+        <section class="settings-section">
+          <h3>启动状态</h3>
+          <p class="settings-copy">打开页面时不默认选中 Skill，先让列表保持中立状态。</p>
+          <div class="startup-preview" aria-hidden="true">
+            <div class="mini-sidebar"></div>
+            <div class="mini-list"></div>
+            <div class="mini-detail muted"></div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>筛选时详情栏</h3>
+          <div class="visual-options" role="group" aria-label="筛选时详情栏">
+            <button class="setting-card" data-setting="autoCollapseDetailOnCategory" data-value="true" aria-pressed="false">
+              <span class="check-mark" aria-hidden="true">✓</span>
+              <span class="setting-preview preview-filter-collapse" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span class="setting-title">自动收起</span>
+              <span class="setting-desc">点左侧分类后，右侧详情栏收起，让列表更宽。</span>
+            </button>
+            <button class="setting-card" data-setting="autoCollapseDetailOnCategory" data-value="false" aria-pressed="false">
+              <span class="check-mark" aria-hidden="true">✓</span>
+              <span class="setting-preview preview-filter-keep" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span class="setting-title">保持详情</span>
+              <span class="setting-desc">点左侧分类后，不主动改变右侧详情栏。</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>选择 Skill 后</h3>
+          <div class="visual-options" role="group" aria-label="选择 Skill 后">
+            <button class="setting-card" data-setting="focusDetailOnSkillSelect" data-value="true" aria-pressed="false">
+              <span class="check-mark" aria-hidden="true">✓</span>
+              <span class="setting-preview preview-skill-focus" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span class="setting-title">专注详情</span>
+              <span class="setting-desc">点中间 Skill 后，展开右侧详情并收起左侧。</span>
+            </button>
+            <button class="setting-card" data-setting="focusDetailOnSkillSelect" data-value="false" aria-pressed="false">
+              <span class="check-mark" aria-hidden="true">✓</span>
+              <span class="setting-preview preview-skill-keep" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span class="setting-title">保持侧栏</span>
+              <span class="setting-desc">点中间 Skill 后，只展开右侧详情。</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </aside>
+    <script src="/static/app.js?v=20260702-mobile1"></script>
+  </body>
+</html>
