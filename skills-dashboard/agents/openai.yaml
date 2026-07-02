@@ -1,0 +1,4 @@
+interface:
+  display_name: "Skills Dashboard"
+  short_description: "本地 Skill 中枢，扫描和整理 Codex、Claude Code、Hermes 等工具的 Skills。"
+  default_prompt: "Use $skills-dashboard to open my local Skill center and refresh installed skills."
