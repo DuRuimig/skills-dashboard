@@ -171,7 +171,15 @@ function renderCategories() {
 
 function renderItems() {
   const items = visibleItems();
-  els.summary.textContent = `${state.items.length} 个 Skills，当前 ${items.length} 个`;
+  const totalSkills = state.items.filter((item) => item.kind === "skill").length;
+  const totalTools = state.items.filter((item) => item.kind === "cli").length;
+  const visibleSkills = items.filter((item) => item.kind === "skill").length;
+  const visibleTools = items.filter((item) => item.kind === "cli").length;
+  const totalParts = [`${totalSkills} 个 Skills`];
+  if (totalTools) totalParts.push(`${totalTools} 个工具`);
+  const visibleParts = [`${visibleSkills} 个 Skills`];
+  if (visibleTools) visibleParts.push(`${visibleTools} 个工具`);
+  els.summary.textContent = `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
   els.viewLabel.textContent = `${filterLabels[state.filter]} · ${state.category}`;
   els.items.className = `item-list ${state.view === "grid" ? "grid-mode" : "list-mode"}`;
   els.listPanel.classList.toggle("is-grid", state.view === "grid");
