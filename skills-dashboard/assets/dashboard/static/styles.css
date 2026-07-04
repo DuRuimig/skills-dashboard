@@ -471,6 +471,7 @@ code {
 }
 
 .segment,
+.action-button,
 .icon-button,
 .plain-button {
   min-height: 40px;
@@ -486,6 +487,18 @@ code {
   border-color: var(--line);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(23, 32, 51, 0.08);
+}
+
+.action-button {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: var(--primary-soft);
+  color: #0b5d57;
+  font-weight: 700;
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .icon-button {
@@ -695,6 +708,31 @@ code {
   padding: 4px 9px;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.ai-pill {
+  border-color: rgba(100, 116, 139, 0.2);
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ai-pill.ready,
+.ai-pill.built-in {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: #e8f5f3;
+  color: #0b5d57;
+}
+
+.ai-pill.pending {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: #fff7ed;
+  color: #9a4a00;
+}
+
+.ai-pill.failed {
+  border-color: rgba(180, 35, 24, 0.22);
+  background: #fff1f0;
+  color: var(--danger);
 }
 
 .category-pill::before,
@@ -921,6 +959,39 @@ code {
 .field textarea {
   min-height: 104px;
   resize: vertical;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-settings-form {
+  display: grid;
+  gap: 12px;
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.toggle-line input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+
+.ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .detail-actions {
