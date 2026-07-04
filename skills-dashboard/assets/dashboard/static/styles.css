@@ -117,7 +117,6 @@ textarea:focus-visible {
 }
 
 .brand-copy,
-.search-box,
 .category-list,
 .storage-note {
   opacity: 1;
@@ -180,7 +179,6 @@ textarea:focus-visible {
 }
 
 .nav-collapsed .brand-copy,
-.nav-collapsed .search-box,
 .nav-collapsed .category-list,
 .nav-collapsed .storage-note {
   opacity: 0;
@@ -243,53 +241,19 @@ h3 {
   line-height: 1.5;
 }
 
-.search-box {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.search-label-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.ai-search-status {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--subtle);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.search-input-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
 .ai-search-toggle {
-  display: grid;
-  place-items: center;
-  width: 34px;
   min-width: 34px;
-  height: 34px;
-  border: 1px solid #cbd5e1;
+  min-height: 30px;
+  border: 1px solid var(--line);
   border-radius: 999px;
   background: #f8fafc;
   color: #64748b;
-  padding: 0;
-  font-size: 11px;
+  padding: 4px 9px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, transform 160ms ease;
+  white-space: nowrap;
 }
 
 .ai-search-toggle:hover {
@@ -299,12 +263,12 @@ h3 {
 
 .ai-search-toggle.active {
   border-color: rgba(15, 118, 110, 0.62);
-  background: var(--primary);
-  color: #ffffff;
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14), 0 8px 18px rgba(15, 118, 110, 0.18);
+  background: #e8f5f3;
+  color: #0b5d57;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.08);
 }
 
-.search-box input,
+.topbar-search input,
 .field input,
 .field textarea {
   width: 100%;
@@ -316,7 +280,19 @@ h3 {
   padding: 10px 12px;
 }
 
-.search-box input::placeholder {
+.topbar-search input {
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 4px;
+}
+
+.topbar-search input:focus-visible {
+  outline: 0;
+}
+
+.topbar-search input::placeholder {
   color: var(--subtle);
 }
 
@@ -425,14 +401,57 @@ code {
 }
 
 .topbar {
+  display: block;
+  min-width: 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.topbar-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   min-width: 0;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
+}
+
+.topbar-title {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.topbar-search {
+  flex: 1 0 360px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 620px;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   background: var(--surface);
+  padding: 5px 8px;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.topbar-search:focus-within {
+  border-color: rgba(15, 118, 110, 0.54);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+.ai-search-status {
+  display: none;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-menu-button {
@@ -464,11 +483,19 @@ code {
 }
 
 .top-actions {
+  flex: 0 1 320px;
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.top-actions::-webkit-scrollbar {
+  display: none;
 }
 
 .view-switch {
@@ -549,14 +576,8 @@ code {
   box-shadow: 0 1px 2px rgba(23, 32, 51, 0.08);
 }
 
-.action-button {
-  border-color: rgba(15, 118, 110, 0.28);
-  background: var(--primary-soft);
-  color: #0b5d57;
-  font-weight: 700;
-}
-
-.action-button:disabled {
+.action-button:disabled,
+.icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.52;
 }
@@ -568,6 +589,38 @@ code {
   padding: 0;
   border-color: var(--line);
   background: var(--surface);
+}
+
+.ai-enrich-button {
+  position: relative;
+  color: #0b5d57;
+}
+
+.ai-enrich-button.has-reminder {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: #e8f5f3;
+}
+
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: #be123c;
+  color: #fff;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.badge[hidden] {
+  display: none;
 }
 
 .icon-button svg {
@@ -1398,14 +1451,13 @@ code {
     margin-top: auto;
   }
 
-  .topbar {
-    align-items: flex-start;
-    gap: 12px;
-  }
-
   .top-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .topbar-search {
+    grid-template-columns: auto minmax(180px, 1fr) minmax(82px, auto);
   }
 
   .content-grid {
@@ -1493,7 +1545,6 @@ code {
     visibility: visible;
   }
 
-  .nav-collapsed .search-box,
   .nav-collapsed .category-list,
   .nav-collapsed .storage-note {
     opacity: 1;
@@ -1545,9 +1596,19 @@ code {
     top: 0;
     z-index: 20;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: 1fr;
     align-items: start;
     background: rgba(255, 255, 255, 0.96);
+  }
+
+  .topbar-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .topbar-title {
+    min-width: 0;
   }
 
   .mobile-menu-button {
@@ -1563,6 +1624,21 @@ code {
     overscroll-behavior-x: contain;
     padding-left: 54px;
     scrollbar-width: none;
+  }
+
+  .topbar-search {
+    grid-column: 1 / -1;
+    width: 100%;
+    grid-template-columns: auto minmax(180px, 1fr);
+  }
+
+  .topbar-search .ai-search-status {
+    display: none;
+  }
+
+  .ai-search-toggle {
+    padding-right: 10px;
+    padding-left: 10px;
   }
 
   .top-actions::-webkit-scrollbar {
@@ -1637,6 +1713,16 @@ code {
 
   .top-actions {
     padding-left: 54px;
+  }
+
+  .topbar-search {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ai-search-toggle {
+    padding-right: 10px;
+    padding-left: 10px;
   }
 
   .settings-head,

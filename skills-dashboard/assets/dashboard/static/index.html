@@ -19,18 +19,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
           </button>
         </div>
-
-        <div class="search-box">
-          <div class="search-label-line">
-            <span>查找 Skill</span>
-            <span id="aiSearchStatus" class="ai-search-status"></span>
-          </div>
-          <div class="search-input-row">
-            <button id="aiSearchToggle" class="ai-search-toggle" type="button" aria-pressed="false" title="启用 AI 找 Skill">AI</button>
-            <input id="search" type="search" placeholder="输入平台、用途、文件类型或命令" autocomplete="off" />
-          </div>
-        </div>
-
         <nav id="categories" class="category-list" aria-label="分类"></nav>
 
         <div class="storage-note">
@@ -41,36 +29,46 @@
 
       <section class="main-panel">
         <header class="topbar">
-          <button id="mobileMenu" class="mobile-menu-button" title="打开分类菜单" aria-label="打开分类菜单" aria-expanded="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-          </button>
-          <div>
-            <h2>Skills</h2>
-            <p id="viewLabel">全部条目</p>
-          </div>
-          <div class="top-actions">
-            <div class="view-switch" role="group" aria-label="显示方式">
-              <button class="view-button active" data-view="grid" title="卡片模式" aria-label="卡片模式">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+          <div class="topbar-main">
+            <button id="mobileMenu" class="mobile-menu-button" title="打开分类菜单" aria-label="打开分类菜单" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <div class="topbar-title">
+              <h2>Skills</h2>
+              <p id="viewLabel">全部条目</p>
+            </div>
+            <div class="topbar-search">
+              <button id="aiSearchToggle" class="ai-search-toggle" type="button" aria-pressed="false" title="启用 AI 找 Skill">AI</button>
+              <input id="search" type="search" placeholder="输入平台、用途、文件类型或命令" autocomplete="off" />
+              <span id="aiSearchStatus" class="ai-search-status"></span>
+            </div>
+            <div class="top-actions">
+              <div class="view-switch" role="group" aria-label="显示方式">
+                <button class="view-button active" data-view="grid" title="卡片模式" aria-label="卡片模式">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+                </button>
+                <button class="view-button" data-view="list" title="列表模式" aria-label="列表模式">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+                </button>
+              </div>
+              <div class="segmented" role="tablist" aria-label="筛选">
+                <button class="segment active" data-filter="all">全部</button>
+                <button class="segment" data-filter="favorite">常用</button>
+                <button class="segment" data-filter="skill">Skills</button>
+                <button class="segment" data-filter="cli">命令</button>
+                <button class="segment" data-filter="hidden">隐藏</button>
+              </div>
+              <button id="aiEnrich" class="icon-button ai-enrich-button" title="AI 整理待整理的 Skill" aria-label="AI 整理待整理的 Skill">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.45 4.25L18 9l-4.55 1.75L12 15l-1.45-4.25L6 9l4.55-1.75L12 3Z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"/><path d="M5 13l.7 1.8L7.5 15.5l-1.8.7L5 18l-.7-1.8-1.8-.7 1.8-.7L5 13Z"/></svg>
+                <span class="badge" hidden></span>
               </button>
-              <button class="view-button" data-view="list" title="列表模式" aria-label="列表模式">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+              <button id="refresh" class="icon-button" title="重新扫描" aria-label="重新扫描">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8m0 0V3m0 5h5M4 13a8 8 0 0 0 14.6 4.5L20 16m0 0v5m0-5h-5"/></svg>
+              </button>
+              <button id="openSettings" class="icon-button" title="设置" aria-label="打开设置">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2.1 2.1 0 0 1-2.97 2.97l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21.4a2.1 2.1 0 0 1-4.2 0v-.09a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.06.06a2.1 2.1 0 0 1-2.97-2.97l.06-.06a1.8 1.8 0 0 0 .36-1.98 1.8 1.8 0 0 0-1.65-1.09H2.6a2.1 2.1 0 0 1 0-4.2h.09a1.8 1.8 0 0 0 1.65-1.09 1.8 1.8 0 0 0-.36-1.98l-.06-.06a2.1 2.1 0 0 1 2.97-2.97l.06.06a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.09-1.65V2.6a2.1 2.1 0 0 1 4.2 0v.09a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2.1 2.1 0 0 1 2.97 2.97l-.06.06a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.09h.09a2.1 2.1 0 0 1 0 4.2h-.09A1.8 1.8 0 0 0 19.4 15Z"/></svg>
               </button>
             </div>
-            <div class="segmented" role="tablist" aria-label="筛选">
-              <button class="segment active" data-filter="all">全部</button>
-              <button class="segment" data-filter="favorite">常用</button>
-              <button class="segment" data-filter="skill">Skills</button>
-              <button class="segment" data-filter="cli">命令</button>
-              <button class="segment" data-filter="hidden">隐藏</button>
-            </div>
-            <button id="aiEnrich" class="action-button" title="AI 整理待整理的 Skill">AI 整理</button>
-            <button id="refresh" class="icon-button" title="重新扫描" aria-label="重新扫描">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8m0 0V3m0 5h5M4 13a8 8 0 0 0 14.6 4.5L20 16m0 0v5m0-5h-5"/></svg>
-            </button>
-            <button id="openSettings" class="icon-button" title="设置" aria-label="打开设置">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2.1 2.1 0 0 1-2.97 2.97l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21.4a2.1 2.1 0 0 1-4.2 0v-.09a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.06.06a2.1 2.1 0 0 1-2.97-2.97l.06-.06a1.8 1.8 0 0 0 .36-1.98 1.8 1.8 0 0 0-1.65-1.09H2.6a2.1 2.1 0 0 1 0-4.2h.09a1.8 1.8 0 0 0 1.65-1.09 1.8 1.8 0 0 0-.36-1.98l-.06-.06a2.1 2.1 0 0 1 2.97-2.97l.06.06a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.09-1.65V2.6a2.1 2.1 0 0 1 4.2 0v.09a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2.1 2.1 0 0 1 2.97 2.97l-.06.06a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.09h.09a2.1 2.1 0 0 1 0 4.2h-.09A1.8 1.8 0 0 0 19.4 15Z"/></svg>
-            </button>
           </div>
         </header>
 
@@ -199,6 +197,6 @@
         </section>
       </div>
     </aside>
-    <script src="/static/app.js?v=20260704-ai-search1"></script>
+    <script src="/static/app.js?v=20260704-ai-toolbar1"></script>
   </body>
 </html>

@@ -39,6 +39,7 @@ const els = {
   catalogPath: document.querySelector("#catalogPath"),
   refresh: document.querySelector("#refresh"),
   aiEnrich: document.querySelector("#aiEnrich"),
+  aiEnrichBadge: document.querySelector("#aiEnrich .badge"),
   mobileMenu: document.querySelector("#mobileMenu"),
   mobileNavBackdrop: document.querySelector("#mobileNavBackdrop"),
   openSettings: document.querySelector("#openSettings"),
@@ -228,9 +229,15 @@ function renderItems() {
     ? `${totalParts.join("，")}，${state.aiSearchBusy ? "AI 搜索中" : `AI 推荐 ${items.length} 个`}`
     : `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
   const pendingAi = state.items.filter((item) => item.kind === "skill" && ["pending", "failed"].includes(item.aiStatus)).length;
-  els.aiEnrich.textContent = state.aiBusy ? "整理中..." : pendingAi && !state.preferences.suppressAiReminder ? `AI 整理 ${pendingAi}` : "AI 整理";
+  const showAiBadge = Boolean(pendingAi && !state.preferences.suppressAiReminder);
+  els.aiEnrich.title = state.aiBusy ? "AI 正在整理" : pendingAi ? `AI 整理 ${pendingAi} 个待处理 Skill` : "AI 整理";
+  els.aiEnrich.setAttribute("aria-label", els.aiEnrich.title);
   els.aiEnrich.disabled = state.aiBusy || !pendingAi;
-  els.aiEnrich.classList.toggle("has-reminder", Boolean(pendingAi && !state.preferences.suppressAiReminder));
+  els.aiEnrich.classList.toggle("has-reminder", showAiBadge);
+  if (els.aiEnrichBadge) {
+    els.aiEnrichBadge.hidden = !showAiBadge;
+    els.aiEnrichBadge.textContent = pendingAi > 99 ? "99+" : String(pendingAi);
+  }
   els.viewLabel.textContent = aiQueryActive
     ? `AI 找 Skill · ${state.aiSearchBusy ? "搜索中" : `${items.length} 个推荐`}`
     : `${filterLabels[state.filter]} · ${state.category}`;
