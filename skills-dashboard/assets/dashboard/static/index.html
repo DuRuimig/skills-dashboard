@@ -58,6 +58,7 @@
               <button class="segment" data-filter="cli">命令</button>
               <button class="segment" data-filter="hidden">隐藏</button>
             </div>
+            <button id="aiEnrich" class="action-button" title="AI 整理待整理的 Skill">AI 整理</button>
             <button id="refresh" class="icon-button" title="重新扫描" aria-label="重新扫描">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8m0 0V3m0 5h5M4 13a8 8 0 0 0 14.6 4.5L20 16m0 0v5m0-5h-5"/></svg>
             </button>
@@ -157,8 +158,37 @@
             </button>
           </div>
         </section>
+
+        <section class="settings-section">
+          <h3>AI 整理</h3>
+          <p class="settings-copy">填写兼容 OpenAI Chat Completions 的接口地址和密钥，用来把新 Skill 整理成统一中文说明。</p>
+          <div class="ai-settings-form">
+            <label class="toggle-line">
+              <input id="aiEnabled" type="checkbox" />
+              <span>启用 AI 整理</span>
+            </label>
+            <div class="field">
+              <label>接口地址</label>
+              <input id="aiBaseUrl" type="url" placeholder="https://api.deepseek.com" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label>API 密钥</label>
+              <input id="aiApiKey" type="password" placeholder="留空则保留已保存密钥" autocomplete="off" />
+              <p id="aiKeyHint" class="field-hint">尚未配置密钥。</p>
+            </div>
+            <div class="field">
+              <label>模型</label>
+              <input id="aiModel" placeholder="deepseek-chat" autocomplete="off" />
+            </div>
+            <div class="ai-actions">
+              <button id="saveAiSettings" class="plain-button">保存设置</button>
+              <button id="testAiSettings" class="plain-button">测试配置</button>
+            </div>
+            <p id="aiSettingsStatus" class="settings-copy"></p>
+          </div>
+        </section>
       </div>
     </aside>
-    <script src="/static/app.js?v=20260703-dedupe1"></script>
+    <script src="/static/app.js?v=20260704-ai1"></script>
   </body>
 </html>
