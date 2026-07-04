@@ -1,6 +1,7 @@
 const state = {
   items: [],
   categoryColors: {},
+  settings: null,
   selectedId: null,
   filter: "all",
   category: "全部",
@@ -10,6 +11,7 @@ const state = {
   detailCollapsed: localStorage.getItem("skills-dashboard-detail-collapsed") === "true",
   settingsOpen: false,
   mobileNavOpen: false,
+  aiBusy: false,
   preferences: {
     autoCollapseDetailOnCategory: getStoredBoolean("skills-dashboard-auto-collapse-detail-on-category", true),
     focusDetailOnSkillSelect: getStoredBoolean("skills-dashboard-focus-detail-on-skill-select", true),
@@ -28,6 +30,7 @@ const els = {
   detail: document.querySelector("#detail"),
   catalogPath: document.querySelector("#catalogPath"),
   refresh: document.querySelector("#refresh"),
+  aiEnrich: document.querySelector("#aiEnrich"),
   mobileMenu: document.querySelector("#mobileMenu"),
   mobileNavBackdrop: document.querySelector("#mobileNavBackdrop"),
   openSettings: document.querySelector("#openSettings"),
@@ -39,6 +42,14 @@ const els = {
   toggleDetail: document.querySelector("#toggleDetail"),
   tabs: document.querySelectorAll(".segment"),
   viewButtons: document.querySelectorAll(".view-button"),
+  aiEnabled: document.querySelector("#aiEnabled"),
+  aiBaseUrl: document.querySelector("#aiBaseUrl"),
+  aiApiKey: document.querySelector("#aiApiKey"),
+  aiKeyHint: document.querySelector("#aiKeyHint"),
+  aiModel: document.querySelector("#aiModel"),
+  saveAiSettings: document.querySelector("#saveAiSettings"),
+  testAiSettings: document.querySelector("#testAiSettings"),
+  aiSettingsStatus: document.querySelector("#aiSettingsStatus"),
 };
 
 const preferenceStorageKeys = {
@@ -61,6 +72,14 @@ const kindLabels = {
   cli: "命令",
 };
 
+const aiStatusLabels = {
+  pending: "待整理",
+  ready: "AI 已整理",
+  failed: "整理失败",
+  "built-in": "内置整理",
+  unsupported: "不支持",
+};
+
 async function fetchItems() {
   const res = await fetch("/api/items");
   const data = await res.json();
@@ -68,6 +87,12 @@ async function fetchItems() {
   state.categoryColors = data.categoryColors || {};
   els.catalogPath.textContent = data.catalogPath;
   render();
+}
+
+async function fetchSettings() {
+  const res = await fetch("/api/settings");
+  state.settings = await res.json();
+  renderSettings();
 }
 
 function visibleItems() {
@@ -180,6 +205,9 @@ function renderItems() {
   const visibleParts = [`${visibleSkills} 个 Skills`];
   if (visibleTools) visibleParts.push(`${visibleTools} 个工具`);
   els.summary.textContent = `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
+  const pendingAi = state.items.filter((item) => item.kind === "skill" && ["pending", "failed"].includes(item.aiStatus)).length;
+  els.aiEnrich.textContent = state.aiBusy ? "整理中..." : pendingAi ? `AI 整理 ${pendingAi}` : "AI 整理";
+  els.aiEnrich.disabled = state.aiBusy || !pendingAi;
   els.viewLabel.textContent = `${filterLabels[state.filter]} · ${state.category}`;
   els.items.className = `item-list ${state.view === "grid" ? "grid-mode" : "list-mode"}`;
   els.listPanel.classList.toggle("is-grid", state.view === "grid");
@@ -209,6 +237,7 @@ function renderItems() {
       </span>
       <span class="row-meta">
         <span class="pill category-pill" style="${categoryPillStyle(color)}">${escapeHtml(item.category)}</span>
+        ${item.aiStatus && item.aiStatus !== "unsupported" ? `<span class="pill ai-pill ${escapeAttr(item.aiStatus)}">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
       </span>
     `;
     row.addEventListener("click", () => {
@@ -245,6 +274,7 @@ function renderDetail() {
         <div class="status-line">
           <span class="status-chip category-chip" style="${categoryPillStyle(color)}">${escapeHtml(item.category)}</span>
           <span class="status-chip">${item.hidden ? "已隐藏" : "使用中"}</span>
+          ${item.aiStatus && item.aiStatus !== "unsupported" ? `<span class="status-chip">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
         </div>
       </div>
 
@@ -300,6 +330,16 @@ function renderDetail() {
         </div>
       </section>
 
+      ${
+        item.kind === "skill"
+          ? `<section class="section">
+              <h3>AI 整理</h3>
+              <p class="detail-text">${escapeHtml(aiStatusText(item))}</p>
+              <button class="plain-button" id="enrichCurrentSkill">${state.aiBusy ? "整理中..." : "重新整理这个 Skill"}</button>
+            </section>`
+          : ""
+      }
+
       <section class="section">
         <h3>本地位置</h3>
         <code>${escapeHtml(item.path)}</code>
@@ -315,6 +355,10 @@ function renderDetail() {
 
   els.detail.querySelector(".favorite-button").addEventListener("click", () => updateMeta(item.id, { favorite: !item.favorite }));
   els.detail.querySelector("#toggleHidden").addEventListener("click", () => updateMeta(item.id, { hidden: !item.hidden }));
+  const enrichCurrent = els.detail.querySelector("#enrichCurrentSkill");
+  if (enrichCurrent) {
+    enrichCurrent.addEventListener("click", () => enrichSkills({ id: item.id, force: true }));
+  }
   els.detail.querySelector("#saveMeta").addEventListener("click", async () => {
     await updateMeta(item.id, {
       category: document.querySelector("#detailCategory").value.trim() || item.autoCategory,
@@ -359,6 +403,75 @@ async function updateCategoryColor(category, color) {
 async function saveCategoryColor(category, color) {
   await updateCategoryColor(category, color);
   await fetchItems();
+}
+
+async function saveAiSettings() {
+  setAiStatus("正在保存...");
+  const payload = {
+    ai: {
+      enabled: els.aiEnabled.checked,
+      baseUrl: els.aiBaseUrl.value.trim(),
+      model: els.aiModel.value.trim(),
+    },
+  };
+  const apiKey = els.aiApiKey.value.trim();
+  if (apiKey) payload.ai.apiKey = apiKey;
+  const res = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    setAiStatus(data.error || "保存失败");
+    return false;
+  }
+  state.settings = data;
+  els.aiApiKey.value = "";
+  renderSettings();
+  setAiStatus("设置已保存。");
+  return true;
+}
+
+async function testAiSettings() {
+  const saved = await saveAiSettings();
+  if (!saved) return;
+  setAiStatus("正在测试配置...");
+  const res = await fetch("/api/ai/test", { method: "POST" });
+  const data = await res.json();
+  setAiStatus(data.ok ? "配置可用。" : data.error || "测试失败");
+}
+
+async function enrichSkills(options = {}) {
+  const saved = await saveAiSettings();
+  if (!saved) return;
+  state.aiBusy = true;
+  render();
+  setAiStatus(options.id ? "正在整理当前 Skill..." : "正在整理待整理 Skill...");
+  try {
+    const res = await fetch("/api/ai/enrich", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 12, ...options }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setAiStatus(data.error || "AI 整理失败");
+      return;
+    }
+    const failed = (data.results || []).filter((entry) => !entry.ok).length;
+    setAiStatus(`已处理 ${data.processed || 0} 个 Skill${failed ? `，${failed} 个失败` : ""}。`);
+    await fetchItems();
+  } finally {
+    state.aiBusy = false;
+    render();
+  }
+}
+
+function setAiStatus(message) {
+  if (els.aiSettingsStatus) {
+    els.aiSettingsStatus.textContent = message || "";
+  }
 }
 
 function categoryColor(category) {
@@ -433,6 +546,24 @@ function renderSettings() {
     card.classList.toggle("selected", selected);
     card.setAttribute("aria-pressed", String(selected));
   }
+  renderAiSettings();
+}
+
+function renderAiSettings() {
+  const ai = state.settings?.ai || {};
+  if (!els.aiEnabled) return;
+  els.aiEnabled.checked = Boolean(ai.enabled);
+  if (document.activeElement !== els.aiBaseUrl) els.aiBaseUrl.value = ai.baseUrl || "";
+  if (document.activeElement !== els.aiModel) els.aiModel.value = ai.model || "";
+  els.aiKeyHint.textContent = ai.apiKeyConfigured ? `已配置密钥：${ai.apiKeyPreview || "已配置"}` : "尚未配置密钥。";
+}
+
+function aiStatusText(item) {
+  if (item.aiStatus === "ready") return `已使用 AI 整理。${item.aiUpdatedAt ? "更新时间：" + item.aiUpdatedAt : ""}`;
+  if (item.aiStatus === "failed") return `上次整理失败：${item.aiError || "未知错误"}`;
+  if (item.aiStatus === "built-in") return "当前使用内置整理画像。你也可以用自己的接口重新整理。";
+  if (item.aiStatus === "pending") return "这个 Skill 还没有 AI 整理缓存，可以点击按钮生成统一中文说明。";
+  return "当前条目不支持 AI 整理。";
 }
 
 function setNavCollapsed(collapsed) {
@@ -486,6 +617,8 @@ els.search.addEventListener("input", (event) => {
 
 els.refresh.addEventListener("click", fetchItems);
 
+els.aiEnrich.addEventListener("click", () => enrichSkills());
+
 els.toggleNav.addEventListener("click", () => {
   if (isMobileLayout()) {
     setMobileNavOpen(false);
@@ -529,6 +662,9 @@ for (const card of els.settingCards) {
   });
 }
 
+els.saveAiSettings.addEventListener("click", saveAiSettings);
+els.testAiSettings.addEventListener("click", testAiSettings);
+
 window.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (state.settingsOpen) {
@@ -568,4 +704,4 @@ for (const button of els.viewButtons) {
   });
 }
 
-fetchItems();
+Promise.all([fetchSettings(), fetchItems()]);
