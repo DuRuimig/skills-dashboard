@@ -656,10 +656,10 @@ def normalize_examples(value):
         return []
     result = []
     for item in value:
-        text = trim_text(item, 120)
+        text = trim_text(item, 80)
         if text:
             result.append(text)
-        if len(result) >= 4:
+        if len(result) >= 2:
             break
     return result
 
@@ -671,8 +671,8 @@ def normalize_tags(value):
     for item in value:
         text = re.sub(r"\s+", "", str(item or "").strip())
         if text:
-            result.append(text[:8])
-        if len(result) >= 3:
+            result.append(text[:4])
+        if len(result) >= 2:
             break
     return result
 
@@ -699,9 +699,9 @@ def validate_ai_profile(profile):
     category = normalize_category(trim_text(profile.get("category"), 16))
     if category not in ALLOWED_CATEGORIES:
         category = "其他工具"
-    summary = trim_text(profile.get("summary"), 180)
-    when_to_use = trim_text(profile.get("whenToUse"), 240)
-    requirements = trim_text(profile.get("requirements"), 220)
+    summary = trim_text(profile.get("summary"), 80)
+    when_to_use = trim_text(profile.get("whenToUse"), 110)
+    requirements = trim_text(profile.get("requirements"), 90)
     examples = normalize_examples(profile.get("examples"))
     tags = normalize_tags(profile.get("tags"))
     if not summary:
@@ -751,18 +751,20 @@ def extract_json_object(text):
 def ai_system_prompt():
     categories = "、".join(ALLOWED_CATEGORIES)
     return f"""你是 Skills Dashboard 的 Agent Skill 目录整理器。
-你的任务是读取一个 SKILL.md，把它整理成稳定、专业、中文的展示元数据。
+你的任务是读取一个 SKILL.md，把它整理成短、准、可扫读的中文展示元数据。
 
 必须遵守：
 1. 只输出 JSON，不要 Markdown，不要解释。
 2. category 只能从这些分类里选：{categories}。
 3. 不要把 Skill 翻译成“能力”；保留 Skill 这个英文词。
-4. summary 必须是中文功能介绍，不能直接复制英文原文，不能写营销空话。
-5. whenToUse 写专业的适用场景，说明什么时候该调用这个 Skill。
-6. requirements 写使用前提、风险、依赖、登录态、是否会修改文件；没有就写“无额外记录。”。
-7. examples 写 2-4 个用户真实会说的调用示例。
-8. tags 最多 3 个，每个尽量 2-4 个中文字符，避免太碎。
-9. 不确定时 category 选“其他工具”，requirements 写“需要进一步确认。”。
+4. 只写用户决定是否调用该 Skill 需要的信息；不要复述实现细节、README、安装步骤或内部文件。
+5. summary 是“功能介绍”，一句话，中文，不超过 42 个汉字。
+6. whenToUse 是“适用场景”，一句话，不超过 60 个汉字，说清楚什么时候该调用。
+7. requirements 是“使用限制”，一句话，不超过 50 个汉字；没有限制写“无额外记录。”。
+8. examples 只写 2 个用户真实会说的调用示例，短句，不要命令大全。
+9. tags 最多 2 个，每个 2-4 个中文字符。
+10. 禁止空泛词：提升效率、帮助用户、优化工作流、增强体验、强大、智能、一站式；除非后面有非常具体的对象。
+11. 不确定时 category 选“其他工具”，requirements 写“需要进一步确认。”。
 
 输出 JSON 结构必须是：
 {{"category":"代码开发","summary":"...","whenToUse":"...","requirements":"...","examples":["..."],"tags":["..."]}}"""

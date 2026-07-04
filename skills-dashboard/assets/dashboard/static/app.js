@@ -15,6 +15,7 @@ const state = {
   preferences: {
     autoCollapseDetailOnCategory: getStoredBoolean("skills-dashboard-auto-collapse-detail-on-category", true),
     focusDetailOnSkillSelect: getStoredBoolean("skills-dashboard-focus-detail-on-skill-select", true),
+    suppressAiReminder: getStoredBoolean("skills-dashboard-suppress-ai-reminder", false),
   },
 };
 
@@ -47,6 +48,7 @@ const els = {
   aiApiKey: document.querySelector("#aiApiKey"),
   aiKeyHint: document.querySelector("#aiKeyHint"),
   aiModel: document.querySelector("#aiModel"),
+  suppressAiReminder: document.querySelector("#suppressAiReminder"),
   saveAiSettings: document.querySelector("#saveAiSettings"),
   testAiSettings: document.querySelector("#testAiSettings"),
   aiSettingsStatus: document.querySelector("#aiSettingsStatus"),
@@ -55,6 +57,7 @@ const els = {
 const preferenceStorageKeys = {
   autoCollapseDetailOnCategory: "skills-dashboard-auto-collapse-detail-on-category",
   focusDetailOnSkillSelect: "skills-dashboard-focus-detail-on-skill-select",
+  suppressAiReminder: "skills-dashboard-suppress-ai-reminder",
 };
 
 const mobileLayoutQuery = window.matchMedia("(max-width: 760px)");
@@ -206,8 +209,9 @@ function renderItems() {
   if (visibleTools) visibleParts.push(`${visibleTools} 个工具`);
   els.summary.textContent = `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
   const pendingAi = state.items.filter((item) => item.kind === "skill" && ["pending", "failed"].includes(item.aiStatus)).length;
-  els.aiEnrich.textContent = state.aiBusy ? "整理中..." : pendingAi ? `AI 整理 ${pendingAi}` : "AI 整理";
+  els.aiEnrich.textContent = state.aiBusy ? "整理中..." : pendingAi && !state.preferences.suppressAiReminder ? `AI 整理 ${pendingAi}` : "AI 整理";
   els.aiEnrich.disabled = state.aiBusy || !pendingAi;
+  els.aiEnrich.classList.toggle("has-reminder", Boolean(pendingAi && !state.preferences.suppressAiReminder));
   els.viewLabel.textContent = `${filterLabels[state.filter]} · ${state.category}`;
   els.items.className = `item-list ${state.view === "grid" ? "grid-mode" : "list-mode"}`;
   els.listPanel.classList.toggle("is-grid", state.view === "grid");
@@ -237,7 +241,7 @@ function renderItems() {
       </span>
       <span class="row-meta">
         <span class="pill category-pill" style="${categoryPillStyle(color)}">${escapeHtml(item.category)}</span>
-        ${item.aiStatus && item.aiStatus !== "unsupported" ? `<span class="pill ai-pill ${escapeAttr(item.aiStatus)}">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
+        ${shouldShowAiReminder(item) ? `<span class="pill ai-pill ${escapeAttr(item.aiStatus)}">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
       </span>
     `;
     row.addEventListener("click", () => {
@@ -274,7 +278,7 @@ function renderDetail() {
         <div class="status-line">
           <span class="status-chip category-chip" style="${categoryPillStyle(color)}">${escapeHtml(item.category)}</span>
           <span class="status-chip">${item.hidden ? "已隐藏" : "使用中"}</span>
-          ${item.aiStatus && item.aiStatus !== "unsupported" ? `<span class="status-chip">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
+          ${["pending", "failed"].includes(item.aiStatus) ? `<span class="status-chip">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
         </div>
       </div>
 
@@ -555,6 +559,9 @@ function renderAiSettings() {
   els.aiEnabled.checked = Boolean(ai.enabled);
   if (document.activeElement !== els.aiBaseUrl) els.aiBaseUrl.value = ai.baseUrl || "";
   if (document.activeElement !== els.aiModel) els.aiModel.value = ai.model || "";
+  if (els.suppressAiReminder) {
+    els.suppressAiReminder.checked = Boolean(state.preferences.suppressAiReminder);
+  }
   els.aiKeyHint.textContent = ai.apiKeyConfigured ? `已配置密钥：${ai.apiKeyPreview || "已配置"}` : "尚未配置密钥。";
 }
 
@@ -564,6 +571,10 @@ function aiStatusText(item) {
   if (item.aiStatus === "built-in") return "当前使用内置整理画像。你也可以用自己的接口重新整理。";
   if (item.aiStatus === "pending") return "这个 Skill 还没有 AI 整理缓存，可以点击按钮生成统一中文说明。";
   return "当前条目不支持 AI 整理。";
+}
+
+function shouldShowAiReminder(item) {
+  return !state.preferences.suppressAiReminder && ["pending", "failed"].includes(item.aiStatus);
 }
 
 function setNavCollapsed(collapsed) {
@@ -664,6 +675,13 @@ for (const card of els.settingCards) {
 
 els.saveAiSettings.addEventListener("click", saveAiSettings);
 els.testAiSettings.addEventListener("click", testAiSettings);
+
+if (els.suppressAiReminder) {
+  els.suppressAiReminder.addEventListener("change", (event) => {
+    setPreference("suppressAiReminder", event.target.checked);
+    render();
+  });
+}
 
 window.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
