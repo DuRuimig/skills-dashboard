@@ -136,6 +136,7 @@ DEFAULT_AI_SETTINGS = {
 }
 
 AI_PROFILE_FIELDS = ["category", "summary", "whenToUse", "requirements", "examples", "tags"]
+AI_SEARCH_FIELDS = ["id", "reason", "callHint", "confidence"]
 
 SKILL_PROFILES = {
     "agent-reach": {
@@ -722,6 +723,49 @@ def validate_ai_profile(profile):
     }
 
 
+def normalize_confidence(value):
+    value = str(value or "").strip()
+    if value in {"高", "中", "低"}:
+        return value
+    lowered = value.lower()
+    if lowered in {"high", "strong"}:
+        return "高"
+    if lowered in {"medium", "mid", "moderate"}:
+        return "中"
+    if lowered in {"low", "weak"}:
+        return "低"
+    return "中"
+
+
+def validate_ai_search_results(payload, valid_ids):
+    if not isinstance(payload, dict):
+        raise ValueError("AI 返回不是 JSON 对象")
+    matches = payload.get("matches", [])
+    if not isinstance(matches, list):
+        raise ValueError("AI 返回缺少 matches")
+    result = []
+    seen = set()
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        item_id = str(match.get("id", "")).strip()
+        if item_id not in valid_ids or item_id in seen:
+            continue
+        seen.add(item_id)
+        reason = trim_text(match.get("reason"), 72) or "与当前需求匹配。"
+        call_hint = trim_text(match.get("callHint"), 80)
+        confidence = normalize_confidence(match.get("confidence"))
+        result.append({
+            "id": item_id,
+            "reason": reason,
+            "callHint": call_hint,
+            "confidence": confidence,
+        })
+        if len(result) >= 8:
+            break
+    return result
+
+
 def normalize_chat_url(base_url):
     base_url = (base_url or "").strip()
     if not base_url:
@@ -768,6 +812,154 @@ def ai_system_prompt():
 
 输出 JSON 结构必须是：
 {{"category":"代码开发","summary":"...","whenToUse":"...","requirements":"...","examples":["..."],"tags":["..."]}}"""
+
+
+def ai_search_system_prompt():
+    return """你是 Skills Dashboard 的 Skill 匹配器。
+用户会用自然语言描述想完成的事，你需要从给定 Skill 索引里挑出最合适的条目。
+
+必须遵守：
+1. 只输出 JSON，不要 Markdown，不要解释。
+2. 只能返回索引里存在的 id，不能编造 Skill。
+3. 最多返回 6 个 matches；没有合适结果就返回空数组。
+4. 优先匹配“能直接完成用户任务”的 Skill，不要只因为词面相似就推荐。
+5. reason 用中文，一句话，不超过 34 个汉字，说明为什么推荐。
+6. callHint 写用户可以怎么叫这个 Skill，一句话，不超过 40 个汉字。
+7. confidence 只能是“高”“中”“低”。
+8. 不要使用空泛词：提升效率、帮助用户、优化工作流、强大、智能、一站式。
+
+输出 JSON 结构必须是：
+{"matches":[{"id":"...","reason":"...","callHint":"...","confidence":"高"}]}"""
+
+
+def ai_search_index(items):
+    result = []
+    for item in items:
+        if item.get("hidden"):
+            continue
+        result.append({
+            "id": item.get("id", ""),
+            "name": item.get("name", ""),
+            "kind": item.get("kind", ""),
+            "category": item.get("category", ""),
+            "summary": trim_text(item.get("summary") or item.get("description"), 120),
+            "whenToUse": trim_text(item.get("whenToUse"), 100),
+            "requirements": trim_text(item.get("requirements"), 80),
+            "examples": [trim_text(entry, 60) for entry in (item.get("examples") or [])[:2]],
+            "tags": (item.get("tags") or [])[:4],
+            "callHint": trim_text(item.get("customCallHint") or item.get("callHint"), 80),
+        })
+    return result
+
+
+def local_search_fallback(query, items, limit=6):
+    stopwords = {
+        "我", "想", "要", "把", "给", "帮", "帮我", "一下", "一个", "这个", "那个",
+        "用", "做", "找", "查", "搜索", "整理", "处理", "生成", "转换", "转成", "变成",
+        "可以", "怎么", "如何", "需要", "适合", "有没有", "有没有什么",
+    }
+    terms = []
+    for term in re.split(r"[\s,，。/、]+", query.lower()):
+        term = term.strip()
+        if not term or term in stopwords:
+            continue
+        if len(term) == 1 and not term.isascii():
+            continue
+        terms.append(term)
+    if not terms:
+        return []
+    scored = []
+    for item in items:
+        if item.get("hidden"):
+            continue
+        name_text = item.get("name", "").lower()
+        priority_text = " ".join([
+            item.get("name", ""),
+            item.get("category", ""),
+            item.get("callHint", ""),
+            item.get("customCallHint", ""),
+        ]).lower()
+        haystack = " ".join([
+            item.get("name", ""),
+            item.get("category", ""),
+            item.get("summary", ""),
+            item.get("description", ""),
+            item.get("whenToUse", ""),
+            item.get("requirements", ""),
+            item.get("callHint", ""),
+            item.get("customCallHint", ""),
+            " ".join(item.get("examples") or []),
+            " ".join(item.get("tags") or []),
+        ]).lower()
+        matched_terms = [term for term in terms if term in haystack]
+        priority_hits = sum(1 for term in terms if term in priority_text)
+        score = sum(4 if term in name_text else 2 if term in priority_text else 1 for term in terms if term in haystack)
+        if score and (len(matched_terms) >= 2 or priority_hits):
+            scored.append((score, item))
+    scored.sort(key=lambda entry: (-entry[0], entry[1].get("name", "").lower()))
+    results = []
+    for score, item in scored[:limit]:
+        results.append({
+            "id": item.get("id", ""),
+            "reason": "本地说明与搜索需求匹配。",
+            "callHint": item.get("customCallHint") or item.get("callHint", ""),
+            "confidence": "中" if score > 1 else "低",
+        })
+    return results
+
+
+def call_ai_search(settings, query, items):
+    ai = settings.get(SETTINGS_AI_KEY, {})
+    api_key = ai.get("apiKey", "")
+    model = (ai.get("model") or "").strip()
+    if not api_key:
+        raise ValueError("缺少 API 密钥")
+    if not model:
+        raise ValueError("缺少模型名称")
+    query = trim_text(query, 240)
+    if not query:
+        raise ValueError("请输入要查找的需求")
+    index = ai_search_index(items)
+    valid_ids = {entry["id"] for entry in index}
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": ai_search_system_prompt()},
+            {
+                "role": "user",
+                "content": json.dumps({
+                    "query": query,
+                    "skills": index,
+                }, ensure_ascii=False),
+            },
+        ],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+    }
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = Request(
+        normalize_chat_url(ai.get("baseUrl")),
+        data=data,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=45) as response:
+            raw = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise ValueError(f"接口返回 {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise ValueError(f"无法连接接口：{exc.reason}") from exc
+    data = json.loads(raw)
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        raise ValueError("接口没有返回内容")
+    return validate_ai_search_results(extract_json_object(content), valid_ids)
 
 
 def call_ai_for_skill(settings, item):
@@ -1250,6 +1442,34 @@ class Handler(SimpleHTTPRequestHandler):
                     save_ai_profile(item, {}, error=str(exc))
                     results.append({"id": item.get("id", ""), "name": item.get("name", ""), "ok": False, "error": str(exc)})
             self.json_response({"ok": True, "processed": len(results), "results": results})
+            return
+        if self.path == "/api/ai/search":
+            body = self.read_json()
+            settings = load_settings()
+            ai = settings.get(SETTINGS_AI_KEY, {})
+            if not ai.get("enabled"):
+                self.json_response({"ok": False, "error": "请先在设置里启用 AI 功能。"}, 400)
+                return
+            try:
+                items = merged_items()
+                matches = call_ai_search(settings, body.get("query", ""), items)
+                items_by_id = {item["id"]: item for item in items}
+                results = []
+                for match in matches:
+                    item = items_by_id.get(match["id"])
+                    if not item:
+                        continue
+                    results.append({
+                        "id": match["id"],
+                        "reason": match["reason"],
+                        "callHint": match["callHint"] or item.get("customCallHint") or item.get("callHint", ""),
+                        "confidence": match["confidence"],
+                    })
+                if not results:
+                    results = local_search_fallback(body.get("query", ""), items)
+                self.json_response({"ok": True, "results": results})
+            except ValueError as exc:
+                self.json_response({"ok": False, "error": str(exc)}, 400)
             return
         if self.path == "/api/category-color":
             body = self.read_json()

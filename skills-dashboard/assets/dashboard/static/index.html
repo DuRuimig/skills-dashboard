@@ -20,10 +20,16 @@
           </button>
         </div>
 
-        <label class="search-box">
-          <span>查找 Skill</span>
-          <input id="search" type="search" placeholder="输入平台、用途、文件类型或命令" autocomplete="off" />
-        </label>
+        <div class="search-box">
+          <div class="search-label-line">
+            <span>查找 Skill</span>
+            <span id="aiSearchStatus" class="ai-search-status"></span>
+          </div>
+          <div class="search-input-row">
+            <button id="aiSearchToggle" class="ai-search-toggle" type="button" aria-pressed="false" title="启用 AI 找 Skill">AI</button>
+            <input id="search" type="search" placeholder="输入平台、用途、文件类型或命令" autocomplete="off" />
+          </div>
+        </div>
 
         <nav id="categories" class="category-list" aria-label="分类"></nav>
 
@@ -161,11 +167,11 @@
 
         <section class="settings-section">
           <h3>AI 整理</h3>
-          <p class="settings-copy">填写兼容 OpenAI Chat Completions 的接口地址和密钥，用来把新 Skill 整理成统一中文说明。</p>
+          <p class="settings-copy">填写兼容 OpenAI Chat Completions 的接口地址和密钥，用来整理 Skill 介绍，也可以在搜索框里用 AI 找 Skill。</p>
           <div class="ai-settings-form">
             <label class="toggle-line">
               <input id="aiEnabled" type="checkbox" />
-              <span>启用 AI 整理</span>
+              <span>启用 AI 功能</span>
             </label>
             <div class="field">
               <label>接口地址</label>
@@ -193,6 +199,6 @@
         </section>
       </div>
     </aside>
-    <script src="/static/app.js?v=20260704-ai2"></script>
+    <script src="/static/app.js?v=20260704-ai-search1"></script>
   </body>
 </html>

@@ -12,6 +12,11 @@ const state = {
   settingsOpen: false,
   mobileNavOpen: false,
   aiBusy: false,
+  aiSearchEnabled: false,
+  aiSearchBusy: false,
+  aiSearchError: "",
+  aiSearchResults: [],
+  aiSearchToken: 0,
   preferences: {
     autoCollapseDetailOnCategory: getStoredBoolean("skills-dashboard-auto-collapse-detail-on-category", true),
     focusDetailOnSkillSelect: getStoredBoolean("skills-dashboard-focus-detail-on-skill-select", true),
@@ -24,6 +29,8 @@ const els = {
   summary: document.querySelector("#summary"),
   viewLabel: document.querySelector("#viewLabel"),
   search: document.querySelector("#search"),
+  aiSearchToggle: document.querySelector("#aiSearchToggle"),
+  aiSearchStatus: document.querySelector("#aiSearchStatus"),
   categories: document.querySelector("#categories"),
   items: document.querySelector("#items"),
   listPanel: document.querySelector(".list-panel"),
@@ -100,6 +107,7 @@ async function fetchSettings() {
 
 function visibleItems() {
   const query = state.query.trim().toLowerCase();
+  const aiResultIds = new Set(state.aiSearchResults.map((entry) => entry.id));
   return state.items.filter((item) => {
     if (state.filter === "favorite" && !item.favorite) return false;
     if (state.filter === "skill" && item.kind !== "skill") return false;
@@ -107,6 +115,9 @@ function visibleItems() {
     if (state.filter === "hidden" && !item.hidden) return false;
     if (state.filter !== "hidden" && item.hidden) return false;
     if (state.category !== "全部" && item.category !== state.category) return false;
+    if (state.aiSearchEnabled && state.query.trim()) {
+      return aiResultIds.has(item.id);
+    }
     if (!query) return true;
     const haystack = [
       item.name,
@@ -125,6 +136,11 @@ function visibleItems() {
       .join(" ")
       .toLowerCase();
     return haystack.includes(query);
+  }).sort((a, b) => {
+    if (!state.aiSearchEnabled || !state.query.trim()) return 0;
+    return aiResultIds.has(a.id) && aiResultIds.has(b.id)
+      ? state.aiSearchResults.findIndex((entry) => entry.id === a.id) - state.aiSearchResults.findIndex((entry) => entry.id === b.id)
+      : 0;
   });
 }
 
@@ -199,6 +215,7 @@ function renderCategories() {
 
 function renderItems() {
   const items = visibleItems();
+  const aiQueryActive = state.aiSearchEnabled && Boolean(state.query.trim());
   const totalSkills = state.items.filter((item) => item.kind === "skill").length;
   const totalTools = state.items.filter((item) => item.kind === "cli").length;
   const visibleSkills = items.filter((item) => item.kind === "skill").length;
@@ -207,12 +224,17 @@ function renderItems() {
   if (totalTools) totalParts.push(`${totalTools} 个工具`);
   const visibleParts = [`${visibleSkills} 个 Skills`];
   if (visibleTools) visibleParts.push(`${visibleTools} 个工具`);
-  els.summary.textContent = `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
+  els.summary.textContent = aiQueryActive
+    ? `${totalParts.join("，")}，${state.aiSearchBusy ? "AI 搜索中" : `AI 推荐 ${items.length} 个`}`
+    : `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
   const pendingAi = state.items.filter((item) => item.kind === "skill" && ["pending", "failed"].includes(item.aiStatus)).length;
   els.aiEnrich.textContent = state.aiBusy ? "整理中..." : pendingAi && !state.preferences.suppressAiReminder ? `AI 整理 ${pendingAi}` : "AI 整理";
   els.aiEnrich.disabled = state.aiBusy || !pendingAi;
   els.aiEnrich.classList.toggle("has-reminder", Boolean(pendingAi && !state.preferences.suppressAiReminder));
-  els.viewLabel.textContent = `${filterLabels[state.filter]} · ${state.category}`;
+  els.viewLabel.textContent = aiQueryActive
+    ? `AI 找 Skill · ${state.aiSearchBusy ? "搜索中" : `${items.length} 个推荐`}`
+    : `${filterLabels[state.filter]} · ${state.category}`;
+  renderAiSearchState();
   els.items.className = `item-list ${state.view === "grid" ? "grid-mode" : "list-mode"}`;
   els.listPanel.classList.toggle("is-grid", state.view === "grid");
   els.listPanel.classList.toggle("is-list", state.view === "list");
@@ -220,11 +242,20 @@ function renderItems() {
   if (!items.some((item) => item.id === state.selectedId)) {
     state.selectedId = null;
   }
+  if (aiQueryActive && state.aiSearchBusy && !items.length) {
+    els.items.innerHTML = `<div class="empty-state"><h2>正在用 AI 查找 Skill</h2><p>我会按你的描述推荐最接近的 Skill。</p></div>`;
+    return;
+  }
   if (!items.length) {
-    els.items.innerHTML = `<div class="empty-state"><h2>没有匹配结果</h2><p>换一个关键词，或切回“全部”。</p></div>`;
+    const title = aiQueryActive ? "没有 AI 推荐结果" : "没有匹配结果";
+    const copy = aiQueryActive
+      ? state.aiSearchError || "换一种说法，或关闭 AI 后用关键词搜索。"
+      : "换一个关键词，或切回“全部”。";
+    els.items.innerHTML = `<div class="empty-state"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p></div>`;
     return;
   }
   for (const item of items) {
+    const aiMatch = aiSearchMatchFor(item.id);
     const row = document.createElement("button");
     row.className = `item-row ${state.view === "grid" ? "item-card" : ""} ${item.id === state.selectedId ? "active" : ""}`;
     const color = item.categoryColor || categoryColor(item.category);
@@ -238,8 +269,10 @@ function renderItems() {
           <span class="name">${escapeHtml(item.name)}</span>
         </span>
         <span class="row-summary">${escapeHtml(item.summary || item.description || "")}</span>
+        ${aiMatch ? `<span class="ai-match-reason">推荐理由：${escapeHtml(aiMatch.reason)}</span>` : ""}
       </span>
       <span class="row-meta">
+        ${aiMatch ? `<span class="pill ai-match-pill">${escapeHtml(aiMatch.confidence)}匹配</span>` : ""}
         <span class="pill category-pill" style="${categoryPillStyle(color)}">${escapeHtml(item.category)}</span>
         ${shouldShowAiReminder(item) ? `<span class="pill ai-pill ${escapeAttr(item.aiStatus)}">${escapeHtml(aiStatusLabels[item.aiStatus] || item.aiStatus)}</span>` : ""}
       </span>
@@ -254,6 +287,10 @@ function renderItems() {
     });
     els.items.append(row);
   }
+}
+
+function aiSearchMatchFor(id) {
+  return state.aiSearchResults.find((entry) => entry.id === id);
 }
 
 function renderDetail() {
@@ -472,6 +509,94 @@ async function enrichSkills(options = {}) {
   }
 }
 
+let aiSearchTimer = null;
+
+function scheduleAiSearch() {
+  clearTimeout(aiSearchTimer);
+  if (!state.aiSearchEnabled) return;
+  const query = state.query.trim();
+  if (!query) {
+    state.aiSearchResults = [];
+    state.aiSearchError = "";
+    state.aiSearchBusy = false;
+    render();
+    return;
+  }
+  aiSearchTimer = setTimeout(() => runAiSearch(query), 450);
+}
+
+async function runAiSearch(query) {
+  if (!state.aiSearchEnabled || !query.trim()) return;
+  const token = state.aiSearchToken + 1;
+  state.aiSearchToken = token;
+  state.aiSearchBusy = true;
+  state.aiSearchError = "";
+  render();
+  try {
+    const res = await fetch("/api/ai/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    const data = await res.json();
+    if (token !== state.aiSearchToken) return;
+    if (!res.ok) {
+      state.aiSearchResults = [];
+      state.aiSearchError = data.error || "AI 搜索失败";
+      return;
+    }
+    state.aiSearchResults = Array.isArray(data.results) ? data.results : [];
+    state.aiSearchError = state.aiSearchResults.length ? "" : "当前库里没有很匹配的 Skill。";
+  } catch (_error) {
+    if (token !== state.aiSearchToken) return;
+    state.aiSearchResults = [];
+    state.aiSearchError = "无法连接本地服务，请稍后再试。";
+  } finally {
+    if (token === state.aiSearchToken) {
+      state.aiSearchBusy = false;
+      render();
+    }
+  }
+}
+
+function renderAiSearchState() {
+  if (!els.aiSearchToggle || !els.aiSearchStatus) return;
+  const enabled = state.aiSearchEnabled;
+  els.aiSearchToggle.classList.toggle("active", enabled);
+  els.aiSearchToggle.setAttribute("aria-pressed", String(enabled));
+  els.aiSearchToggle.title = enabled ? "关闭 AI 找 Skill" : "启用 AI 找 Skill";
+  els.search.placeholder = enabled ? "描述你想完成的事，比如：把 PDF 转成 Markdown" : "输入平台、用途、文件类型或命令";
+  if (!enabled) {
+    els.aiSearchStatus.textContent = "";
+  } else if (state.aiSearchBusy) {
+    els.aiSearchStatus.textContent = "AI 搜索中...";
+  } else if (state.aiSearchError && state.query.trim()) {
+    els.aiSearchStatus.textContent = state.aiSearchError;
+  } else if (state.aiSearchResults.length && state.query.trim()) {
+    els.aiSearchStatus.textContent = `${state.aiSearchResults.length} 个推荐`;
+  } else {
+    els.aiSearchStatus.textContent = "AI 模式";
+  }
+}
+
+function toggleAiSearch() {
+  state.aiSearchEnabled = !state.aiSearchEnabled;
+  state.aiSearchResults = [];
+  state.aiSearchError = "";
+  state.aiSearchBusy = false;
+  state.aiSearchToken += 1;
+  clearTimeout(aiSearchTimer);
+  if (state.aiSearchEnabled) {
+    state.filter = "all";
+    state.category = "全部";
+  }
+  render();
+  if (state.aiSearchEnabled) {
+    scheduleAiSearch();
+    els.search.focus();
+  }
+}
+
 function setAiStatus(message) {
   if (els.aiSettingsStatus) {
     els.aiSettingsStatus.textContent = message || "";
@@ -516,6 +641,7 @@ function darkenHex(hex, factor) {
 function render() {
   renderShellState();
   renderSettings();
+  els.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.filter === state.filter));
   els.viewButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === state.view));
   renderCategories();
   renderItems();
@@ -623,8 +749,17 @@ function escapeAttr(value) {
 
 els.search.addEventListener("input", (event) => {
   state.query = event.target.value;
+  if (state.aiSearchEnabled) {
+    state.aiSearchResults = [];
+    state.aiSearchError = "";
+    scheduleAiSearch();
+  }
   render();
 });
+
+if (els.aiSearchToggle) {
+  els.aiSearchToggle.addEventListener("click", toggleAiSearch);
+}
 
 els.refresh.addEventListener("click", fetchItems);
 
