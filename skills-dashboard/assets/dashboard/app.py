@@ -2,11 +2,15 @@
 import json
 import os
 import re
+import hashlib
 import subprocess
 import sys
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,7 +29,10 @@ def default_data_dir():
 
 DATA = default_data_dir()
 CATALOG = DATA / "catalog.json"
+SETTINGS = DATA / "settings.json"
 CATALOG_CATEGORY_COLORS_KEY = "__categoryColors"
+CATALOG_AI_KEY = "__aiEnrichment"
+SETTINGS_AI_KEY = "ai"
 
 HOME = Path.home()
 
@@ -118,6 +125,17 @@ DEFAULT_CATEGORY_COLORS = {
     "个人知识库": "#be123c",
     "其他工具": "#64748b",
 }
+
+ALLOWED_CATEGORIES = list(DEFAULT_CATEGORY_COLORS.keys())
+
+DEFAULT_AI_SETTINGS = {
+    "enabled": False,
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "",
+    "model": "deepseek-chat",
+}
+
+AI_PROFILE_FIELDS = ["category", "summary", "whenToUse", "requirements", "examples", "tags"]
 
 SKILL_PROFILES = {
     "agent-reach": {
@@ -533,6 +551,51 @@ def save_catalog(catalog):
     CATALOG.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def load_settings(include_env=True):
+    settings = {SETTINGS_AI_KEY: dict(DEFAULT_AI_SETTINGS)}
+    if SETTINGS.exists():
+        try:
+            saved = json.loads(SETTINGS.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            saved = {}
+        if isinstance(saved, dict) and isinstance(saved.get(SETTINGS_AI_KEY), dict):
+            settings[SETTINGS_AI_KEY].update(saved[SETTINGS_AI_KEY])
+    env_key = (os.environ.get("SKILLS_DASHBOARD_AI_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")) if include_env else ""
+    if env_key:
+        settings[SETTINGS_AI_KEY]["apiKey"] = env_key
+        settings[SETTINGS_AI_KEY]["apiKeySource"] = "environment"
+    else:
+        settings[SETTINGS_AI_KEY]["apiKeySource"] = "settings"
+    return settings
+
+
+def save_settings(settings):
+    DATA.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        SETTINGS.chmod(0o600)
+    except OSError:
+        pass
+
+
+def public_settings():
+    settings = load_settings()
+    ai = dict(settings.get(SETTINGS_AI_KEY, {}))
+    api_key = ai.get("apiKey", "")
+    ai["apiKeyConfigured"] = bool(api_key)
+    ai["apiKeyPreview"] = mask_secret(api_key)
+    ai.pop("apiKey", None)
+    return {SETTINGS_AI_KEY: ai, "settingsPath": str(SETTINGS)}
+
+
+def mask_secret(value):
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "已配置"
+    return f"{value[:3]}...{value[-4:]}"
+
+
 def valid_hex_color(value):
     return bool(re.match(r"^#[0-9a-fA-F]{6}$", value or ""))
 
@@ -583,11 +646,214 @@ def clean_description(value):
     return value[:900]
 
 
+def trim_text(value, limit):
+    value = re.sub(r"\s+", " ", str(value or "")).strip()
+    return value[:limit]
+
+
+def normalize_examples(value):
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value:
+        text = trim_text(item, 120)
+        if text:
+            result.append(text)
+        if len(result) >= 4:
+            break
+    return result
+
+
+def normalize_tags(value):
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value:
+        text = re.sub(r"\s+", "", str(item or "").strip())
+        if text:
+            result.append(text[:8])
+        if len(result) >= 3:
+            break
+    return result
+
+
 def clean_scalar(value):
     value = (value or "").strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def content_hash(text):
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def catalog_ai_profiles(catalog):
+    profiles = catalog.get(CATALOG_AI_KEY, {})
+    return profiles if isinstance(profiles, dict) else {}
+
+
+def validate_ai_profile(profile):
+    if not isinstance(profile, dict):
+        raise ValueError("AI 返回不是 JSON 对象")
+    category = normalize_category(trim_text(profile.get("category"), 16))
+    if category not in ALLOWED_CATEGORIES:
+        category = "其他工具"
+    summary = trim_text(profile.get("summary"), 180)
+    when_to_use = trim_text(profile.get("whenToUse"), 240)
+    requirements = trim_text(profile.get("requirements"), 220)
+    examples = normalize_examples(profile.get("examples"))
+    tags = normalize_tags(profile.get("tags"))
+    if not summary:
+        raise ValueError("AI 返回缺少 summary")
+    if not when_to_use:
+        when_to_use = "当你的需求和这个 Skill 的名称或说明匹配时使用。"
+    if not requirements:
+        requirements = "无额外记录。"
+    if not examples:
+        examples = ["直接描述你的需求，或点名使用这个 Skill。"]
+    return {
+        "category": category,
+        "summary": summary,
+        "whenToUse": when_to_use,
+        "requirements": requirements,
+        "examples": examples,
+        "tags": tags,
+    }
+
+
+def normalize_chat_url(base_url):
+    base_url = (base_url or "").strip()
+    if not base_url:
+        raise ValueError("缺少接口地址")
+    if not base_url.startswith(("http://", "https://")):
+        base_url = "https://" + base_url
+    if base_url.rstrip("/").endswith("/chat/completions"):
+        return base_url.rstrip("/")
+    return urljoin(base_url.rstrip("/") + "/", "chat/completions")
+
+
+def extract_json_object(text):
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        return json.loads(text[start : end + 1])
+
+
+def ai_system_prompt():
+    categories = "、".join(ALLOWED_CATEGORIES)
+    return f"""你是 Skills Dashboard 的 Agent Skill 目录整理器。
+你的任务是读取一个 SKILL.md，把它整理成稳定、专业、中文的展示元数据。
+
+必须遵守：
+1. 只输出 JSON，不要 Markdown，不要解释。
+2. category 只能从这些分类里选：{categories}。
+3. 不要把 Skill 翻译成“能力”；保留 Skill 这个英文词。
+4. summary 必须是中文功能介绍，不能直接复制英文原文，不能写营销空话。
+5. whenToUse 写专业的适用场景，说明什么时候该调用这个 Skill。
+6. requirements 写使用前提、风险、依赖、登录态、是否会修改文件；没有就写“无额外记录。”。
+7. examples 写 2-4 个用户真实会说的调用示例。
+8. tags 最多 3 个，每个尽量 2-4 个中文字符，避免太碎。
+9. 不确定时 category 选“其他工具”，requirements 写“需要进一步确认。”。
+
+输出 JSON 结构必须是：
+{{"category":"代码开发","summary":"...","whenToUse":"...","requirements":"...","examples":["..."],"tags":["..."]}}"""
+
+
+def call_ai_for_skill(settings, item):
+    ai = settings.get(SETTINGS_AI_KEY, {})
+    api_key = ai.get("apiKey", "")
+    model = (ai.get("model") or "").strip()
+    if not api_key:
+        raise ValueError("缺少 API 密钥")
+    if not model:
+        raise ValueError("缺少模型名称")
+    skill_path = Path(item.get("path", ""))
+    if not skill_path.exists():
+        raise ValueError("找不到 SKILL.md")
+    skill_text = skill_path.read_text(encoding="utf-8", errors="replace")
+    skill_text = skill_text[:16000]
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": ai_system_prompt()},
+            {
+                "role": "user",
+                "content": (
+                    f"Skill 名称：{item.get('name', '')}\n"
+                    f"当前自动分类：{item.get('category', '')}\n"
+                    f"调用提示：{item.get('callHint', '')}\n\n"
+                    f"SKILL.md 内容：\n{skill_text}"
+                ),
+            },
+        ],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = Request(
+        normalize_chat_url(ai.get("baseUrl")),
+        data=data,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=45) as response:
+            raw = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise ValueError(f"接口返回 {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise ValueError(f"无法连接接口：{exc.reason}") from exc
+    data = json.loads(raw)
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        raise ValueError("接口没有返回内容")
+    return validate_ai_profile(extract_json_object(content))
+
+
+def item_by_id(item_id):
+    for item in scan_skills():
+        if item.get("id") == item_id:
+            return item
+    return None
+
+
+def ai_candidate_items(force=False):
+    catalog = load_catalog()
+    ai_profiles = catalog_ai_profiles(catalog)
+    candidates = []
+    for item in scan_skills():
+        saved = ai_profiles.get(item["id"], {})
+        fresh = bool(saved.get("profile")) and saved.get("skillHash") == item.get("skillHash")
+        if force or (not item.get("hasBuiltInProfile") and not fresh):
+            candidates.append(item)
+    return candidates
+
+
+def save_ai_profile(item, profile, error=""):
+    catalog = load_catalog()
+    ai_profiles = catalog_ai_profiles(catalog)
+    ai_profiles[item["id"]] = {
+        "skillHash": item.get("skillHash", ""),
+        "profile": profile if not error else {},
+        "error": error,
+        "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    catalog[CATALOG_AI_KEY] = ai_profiles
+    save_catalog(catalog)
 
 
 def infer_category(name, description, path="", kind="skill"):
@@ -698,6 +964,13 @@ def prefer_skill_item(current, candidate):
     return candidate if candidate_key < current_key else current
 
 
+def copy_skill_runtime_fields(target, source):
+    for key in ["id", "source", "path", "folder", "skillHash", "hasBuiltInProfile"]:
+        if key in source:
+            target[key] = source[key]
+    return target
+
+
 def dedupe_skills(items):
     deduped = {}
     locations = {}
@@ -713,7 +986,9 @@ def dedupe_skills(items):
         if key not in deduped:
             deduped[key] = item
         else:
-            deduped[key] = prefer_skill_item(deduped[key], item)
+            preferred = prefer_skill_item(deduped[key], item)
+            if preferred is not deduped[key]:
+                deduped[key] = copy_skill_runtime_fields(deduped[key], preferred)
 
     result = []
     for key, item in deduped.items():
@@ -743,6 +1018,7 @@ def scan_skills():
             description = clean_description(fm.get("description", ""))
             source = skill_source(skill_file)
             item_id = f"skill:{skill_file}"
+            skill_hash = content_hash(text)
             items.append(
                 enrich_item({
                     "id": item_id,
@@ -753,6 +1029,8 @@ def scan_skills():
                     "description": description,
                     "path": str(skill_file),
                     "folder": str(skill_file.parent),
+                    "skillHash": skill_hash,
+                    "hasBuiltInProfile": bool(profile_for(name, "skill")),
                     "callHint": f"直接描述需求，或说：用 {name} ...",
                 })
             )
@@ -816,17 +1094,39 @@ def scan_cli_tools():
 def merged_items():
     catalog = load_catalog()
     colors = category_colors(catalog)
+    ai_profiles = catalog_ai_profiles(catalog)
     items = scan_skills() + scan_cli_tools()
     for item in items:
         saved = catalog.get(item["id"], {})
+        ai_saved = ai_profiles.get(item["id"], {}) if item.get("kind") == "skill" else {}
+        ai_profile = ai_saved.get("profile", {}) if isinstance(ai_saved, dict) else {}
+        ai_fresh = bool(ai_profile) and ai_saved.get("skillHash") == item.get("skillHash")
+        if ai_fresh and not item.get("hasBuiltInProfile"):
+            for key in AI_PROFILE_FIELDS:
+                if key in ai_profile:
+                    item[key] = ai_profile[key]
         item["autoCategory"] = item["category"]
         item["category"] = normalize_category(saved.get("category")) if saved.get("category") else item["category"]
         item["categoryColor"] = colors.get(item["category"], DEFAULT_CATEGORY_COLORS["其他工具"])
         item["notes"] = saved.get("notes", "")
-        item["tags"] = saved.get("tags", [])
+        item["tags"] = saved.get("tags", item.get("tags", []))
         item["favorite"] = bool(saved.get("favorite", False))
         item["hidden"] = bool(saved.get("hidden", False))
         item["customCallHint"] = saved.get("customCallHint", "")
+        item["aiStatus"] = "unsupported"
+        item["aiUpdatedAt"] = ""
+        item["aiError"] = ""
+        if item.get("kind") == "skill":
+            if ai_fresh:
+                item["aiStatus"] = "ready"
+                item["aiUpdatedAt"] = ai_saved.get("updatedAt", "")
+            elif item.get("hasBuiltInProfile"):
+                item["aiStatus"] = "built-in"
+            elif ai_saved.get("error"):
+                item["aiStatus"] = "failed"
+                item["aiError"] = ai_saved.get("error", "")
+            else:
+                item["aiStatus"] = "pending"
     return sorted(items, key=lambda x: (not x["favorite"], x["category"].lower(), x["name"].lower()))
 
 
@@ -862,6 +1162,9 @@ class Handler(SimpleHTTPRequestHandler):
             catalog = load_catalog()
             self.json_response({"items": merged_items(), "categoryColors": category_colors(catalog), "catalogPath": str(CATALOG)})
             return
+        if parsed.path == "/api/settings":
+            self.json_response(public_settings())
+            return
         if parsed.path == "/api/open":
             target = parse_qs(parsed.query).get("path", [""])[0]
             if not target or not Path(target).exists():
@@ -887,6 +1190,64 @@ class Handler(SimpleHTTPRequestHandler):
             catalog[item_id] = current
             save_catalog(catalog)
             self.json_response({"ok": True, "item": current})
+            return
+        if self.path == "/api/settings":
+            body = self.read_json()
+            settings = load_settings(include_env=False)
+            ai = settings.get(SETTINGS_AI_KEY, dict(DEFAULT_AI_SETTINGS))
+            incoming = body.get(SETTINGS_AI_KEY, body)
+            if "enabled" in incoming:
+                ai["enabled"] = bool(incoming.get("enabled"))
+            if "baseUrl" in incoming:
+                ai["baseUrl"] = str(incoming.get("baseUrl", "")).strip()
+            if "model" in incoming:
+                ai["model"] = str(incoming.get("model", "")).strip()
+            if "apiKey" in incoming:
+                api_key = str(incoming.get("apiKey", "")).strip()
+                if api_key:
+                    ai["apiKey"] = api_key
+            if incoming.get("clearApiKey"):
+                ai["apiKey"] = ""
+            ai.pop("apiKeySource", None)
+            settings[SETTINGS_AI_KEY] = ai
+            save_settings(settings)
+            self.json_response({"ok": True, **public_settings()})
+            return
+        if self.path == "/api/ai/test":
+            try:
+                settings = load_settings()
+                ai = settings.get(SETTINGS_AI_KEY, {})
+                if not ai.get("apiKey"):
+                    raise ValueError("缺少 API 密钥")
+                if not ai.get("model"):
+                    raise ValueError("缺少模型名称")
+                normalize_chat_url(ai.get("baseUrl"))
+                self.json_response({"ok": True, "message": "配置已保存，可以调用接口。"})
+            except ValueError as exc:
+                self.json_response({"ok": False, "error": str(exc)}, 400)
+            return
+        if self.path == "/api/ai/enrich":
+            body = self.read_json()
+            settings = load_settings()
+            ai = settings.get(SETTINGS_AI_KEY, {})
+            if not ai.get("enabled"):
+                self.json_response({"ok": False, "error": "请先在设置里启用 AI 整理。"}, 400)
+                return
+            force = bool(body.get("force", False))
+            item_id = body.get("id")
+            limit = max(1, min(int(body.get("limit", 12)), 50))
+            items = [item_by_id(item_id)] if item_id else ai_candidate_items(force=force)[:limit]
+            items = [item for item in items if item and item.get("kind") == "skill"]
+            results = []
+            for item in items:
+                try:
+                    profile = call_ai_for_skill(settings, item)
+                    save_ai_profile(item, profile)
+                    results.append({"id": item["id"], "name": item["name"], "ok": True, "profile": profile})
+                except Exception as exc:
+                    save_ai_profile(item, {}, error=str(exc))
+                    results.append({"id": item.get("id", ""), "name": item.get("name", ""), "ok": False, "error": str(exc)})
+            self.json_response({"ok": True, "processed": len(results), "results": results})
             return
         if self.path == "/api/category-color":
             body = self.read_json()
