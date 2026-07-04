@@ -71,11 +71,11 @@ const preferenceStorageKeys = {
 const mobileLayoutQuery = window.matchMedia("(max-width: 760px)");
 
 const filterLabels = {
-  all: "全部 Skills",
-  favorite: "常用 Skills",
+  all: "全部",
+  favorite: "常用",
   skill: "Skills",
-  cli: "命令行工具",
-  hidden: "已隐藏",
+  cli: "命令",
+  hidden: "隐藏",
 };
 
 const kindLabels = {
@@ -219,15 +219,10 @@ function renderItems() {
   const aiQueryActive = state.aiSearchEnabled && Boolean(state.query.trim());
   const totalSkills = state.items.filter((item) => item.kind === "skill").length;
   const totalTools = state.items.filter((item) => item.kind === "cli").length;
-  const visibleSkills = items.filter((item) => item.kind === "skill").length;
-  const visibleTools = items.filter((item) => item.kind === "cli").length;
-  const totalParts = [`${totalSkills} 个 Skills`];
-  if (totalTools) totalParts.push(`${totalTools} 个工具`);
-  const visibleParts = [`${visibleSkills} 个 Skills`];
-  if (visibleTools) visibleParts.push(`${visibleTools} 个工具`);
-  els.summary.textContent = aiQueryActive
-    ? `${totalParts.join("，")}，${state.aiSearchBusy ? "AI 搜索中" : `AI 推荐 ${items.length} 个`}`
-    : `${totalParts.join("，")}，当前 ${visibleParts.join("，")}`;
+  els.summary.innerHTML = `
+    <span>Skill：${totalSkills}</span>
+    <span>工具：${totalTools}</span>
+  `;
   const pendingAi = state.items.filter((item) => item.kind === "skill" && ["pending", "failed"].includes(item.aiStatus)).length;
   const showAiBadge = Boolean(pendingAi && !state.preferences.suppressAiReminder);
   els.aiEnrich.title = state.aiBusy ? "AI 正在整理" : pendingAi ? `AI 整理 ${pendingAi} 个待处理 Skill` : "AI 整理";
@@ -238,9 +233,10 @@ function renderItems() {
     els.aiEnrichBadge.hidden = !showAiBadge;
     els.aiEnrichBadge.textContent = pendingAi > 99 ? "99+" : String(pendingAi);
   }
+  const viewLabel = state.category !== "全部" ? state.category : state.filter === "all" ? "全部" : filterLabels[state.filter];
   els.viewLabel.textContent = aiQueryActive
-    ? `AI 找 Skill · ${state.aiSearchBusy ? "搜索中" : `${items.length} 个推荐`}`
-    : `${filterLabels[state.filter]} · ${state.category}`;
+    ? `AI ${state.aiSearchBusy ? "搜索中" : `${items.length} 个推荐`}`
+    : viewLabel;
   renderAiSearchState();
   els.items.className = `item-list ${state.view === "grid" ? "grid-mode" : "list-mode"}`;
   els.listPanel.classList.toggle("is-grid", state.view === "grid");
